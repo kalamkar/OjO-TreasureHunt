@@ -124,4 +124,9 @@ public class Model {
     public void rotate(int offset, float angle, float x, float y, float z) {
         Matrix.rotateM(modelValue, offset, angle, x, y ,z);
     }
+
+    public void translate(int offset, float x, float y, float z) {
+        Matrix.setIdentityM(modelValue, offset);
+        Matrix.translateM(modelValue, offset, x, y, z);
+    }
 }

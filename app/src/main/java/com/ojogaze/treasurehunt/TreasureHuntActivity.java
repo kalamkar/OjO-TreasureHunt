@@ -37,11 +37,9 @@ import java.util.List;
 
 import javax.microedition.khronos.egl.EGLConfig;
 
-import care.dovetail.ojo.EOGProcessor;
 import care.dovetail.ojo.EyeEvent;
 import care.dovetail.ojo.Gesture;
-import care.dovetail.ojo.GestureEogProcessor;
-import care.dovetail.ojo.bluetooth.ShimmerClient;
+import care.dovetail.ojo.EyeController;
 
 /**
  * A Google VR sample application.
@@ -54,10 +52,9 @@ import care.dovetail.ojo.bluetooth.ShimmerClient;
  * randomly reposition the cube.
  */
 public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoRenderer,
-        ShimmerClient.BluetoothDeviceListener, EyeEvent.Observer, Gesture.Observer {
+        Gesture.Observer {
 
-    private final ShimmerClient patchClient = new ShimmerClient(this, this);
-    private EOGProcessor eog;
+    private final EyeController eyeController = new EyeController(this);
 
     protected float[] modelPosition;
 
@@ -130,6 +127,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         // Initialize 3D audio engine.
         gvrAudioEngine =
                 new GvrAudioEngine(this, GvrAudioEngine.RenderingMode.BINAURAL_HIGH_QUALITY);
+        setEyeEventSource((EyeEvent.Source) eyeController.processor);
     }
 
     public void initializeGvrView() {
@@ -159,7 +157,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     @Override
     public void onPause() {
         gvrAudioEngine.pause();
-        stopBluetooth();
+        eyeController.disconnect();
         super.onPause();
     }
 
@@ -167,7 +165,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     public void onResume() {
         super.onResume();
         gvrAudioEngine.resume();
-        startBluetooth();
+        eyeController.connect();
     }
 
     @Override
@@ -209,8 +207,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         cube.attachShaders(new Shader[] {vertexShader, passthroughShader});
         floor.attachShaders(new Shader[] {vertexShader, gridShader});
 
-        Matrix.setIdentityM(floor.modelValue, 0);
-        Matrix.translateM(floor.modelValue, 0, 0, -floorDepth, 0); // Floor appears below user.
+        floor.translate(0, 0, -floorDepth, 0); // Floor appears below user.
 
         // Avoid any delays during start-up due to decoding of sound files.
         new Thread(
@@ -241,8 +238,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
      * Updates the cube model position.
      */
     protected void updateModelPosition() {
-        Matrix.setIdentityM(cube.modelValue, 0);
-        Matrix.translateM(cube.modelValue, 0, modelPosition[0], modelPosition[1], modelPosition[2]);
+        cube.translate(0, modelPosition[0], modelPosition[1], modelPosition[2]);
 
         // Update the sound location to match it with the new cube position.
         if (sourceId != GvrAudioEngine.INVALID_ID) {
@@ -384,37 +380,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     }
 
     @Override
-    public void onConnect(String name) {
-        Log.i(TAG, String.format("Connected to %s", name));
-    }
-
-    @Override
-    public void onDisconnect(String name) {
-        Log.i(TAG, String.format("Disconnected from %s", name));
-    }
-
-    @Override
-    public EyeEvent.Criteria getCriteria() {
-        return new EyeEvent.AnyCriteria()
-                .add(new EyeEvent.Criterion(EyeEvent.Type.SIGNAL_QUALITY))
-                .add(EyeEvent.Criterion.badContact(5000));
-    }
-
-    @Override
-    public void onEyeEvent(EyeEvent event) {
-        switch (event.type) {
-            case BAD_CONTACT:
-                if (patchClient.isConnected()) {
-                    stopBluetooth();
-                    startBluetooth();
-                }
-                break;
-            case SIGNAL_QUALITY:
-        }
-    }
-
-    @Override
     public void onGesture(final String gestureName, final List<EyeEvent> events) {
+        Log.v(TAG, gestureName);
         switch (gestureName) {
             case "blink":
                 onCardboardTrigger();
@@ -429,21 +396,5 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
                 .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.DOWN, 4000))
                 .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 2000))
                 .addObserver(this));
-    }
-
-    private void startBluetooth() {
-        eog = new GestureEogProcessor(); // new CombinedEogProcessor(3, true);
-        ((EyeEvent.Source) eog).add(this);
-        setEyeEventSource((EyeEvent.Source) eog);
-        patchClient.connect();
-    }
-
-    private void stopBluetooth() {
-        patchClient.close();
-    }
-
-    @Override
-    public void onNewValues(int channel1, int channel2) {
-        eog.update(channel1, channel2);
     }
 }
