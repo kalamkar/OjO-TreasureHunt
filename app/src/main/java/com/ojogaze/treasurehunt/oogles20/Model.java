@@ -1,7 +1,10 @@
-package com.ojogaze.treasurehunt;
+package com.ojogaze.treasurehunt.oogles20;
 
 import android.opengl.GLES20;
+import android.opengl.Matrix;
 import android.util.Log;
+
+import com.ojogaze.treasurehunt.Utils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -11,7 +14,7 @@ import java.nio.FloatBuffer;
  * Created by abhi on 5/19/17.
  */
 
-public class Model20 {
+public class Model {
     private static final String TAG = "Model20";
 
     private static final int COORDS_PER_VERTEX = 3;
@@ -19,7 +22,7 @@ public class Model20 {
     public final float[] lightPosInEyeSpace = new float[4];
 
     public final String name;
-    private int programId;
+    private int programId = 0;
 
     public final float[] modelValue = new float[16];
 
@@ -38,7 +41,7 @@ public class Model20 {
     public int drawArrayStart = 0;
     public int drawArrayCount = 24; // 36 for cube
 
-    public Model20(String name) {
+    public Model(String name) {
         this.name = name;
     }
 
@@ -63,15 +66,15 @@ public class Model20 {
         this.normals.position(0);
     }
 
-    public void loadProgramParams(int[] shaders) {
+    public void attachShaders(Shader[] shaders) {
         programId = GLES20.glCreateProgram();
-        for (int shader : shaders) {
-            GLES20.glAttachShader(programId, shader);
+        for (Shader shader : shaders) {
+            GLES20.glAttachShader(programId, shader.id);
         }
         GLES20.glLinkProgram(programId);
         GLES20.glUseProgram(programId);
 
-        checkGLError(name + " program");
+        Utils.checkGLError(name + " program");
 
         modelParam = GLES20.glGetUniformLocation(programId, "u_Model");
         modelViewParam = GLES20.glGetUniformLocation(programId, "u_MVMatrix");
@@ -82,7 +85,7 @@ public class Model20 {
         normalParam = GLES20.glGetAttribLocation(programId, "a_Normal");
         colorParam = GLES20.glGetAttribLocation(programId, "a_Color");
 
-        checkGLError(name + " program params");
+        Utils.checkGLError(name + " program params");
     }
 
     /**
@@ -115,19 +118,10 @@ public class Model20 {
         GLES20.glDisableVertexAttribArray(normalParam);
         GLES20.glDisableVertexAttribArray(colorParam);
 
-        checkGLError("drawing " + name);
+        Utils.checkGLError("drawing " + name);
     }
 
-    /**
-     * Checks if we've had an error inside of OpenGL ES, and if so what that error is.
-     *
-     * @param label Label to report in case of error.
-     */
-    public static void checkGLError(String label) {
-        int error;
-        while ((error = GLES20.glGetError()) != GLES20.GL_NO_ERROR) {
-            Log.e(TAG, label + ": glError " + error);
-            throw new RuntimeException(label + ": glError " + error);
-        }
+    public void rotate(int offset, float angle, float x, float y, float z) {
+        Matrix.rotateM(modelValue, offset, angle, x, y ,z);
     }
 }
