@@ -373,9 +373,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         float modelViewProjection[] = new float[16];
         Matrix.multiplyMM(modelView, 0, view, 0, cube.modelValue, 0);
         Matrix.multiplyMM(modelViewProjection, 0, perspective, 0, modelView, 0);
-        if (isLookingAtObject()) {
-            cube.setColors(WorldLayoutData.CUBE_FOUND_COLORS);
-        }
+        cube.setColors(isLookingAtObject()
+                ? WorldLayoutData.CUBE_FOUND_COLORS : WorldLayoutData.CUBE_COLORS);
         cube.draw(modelView, modelViewProjection);
 
         // Set modelView for the floor, so we draw floor in the correct location
