@@ -2,7 +2,6 @@ package com.ojogaze.treasurehunt.oogles20;
 
 import android.opengl.GLES20;
 import android.opengl.Matrix;
-import android.util.Log;
 
 import com.ojogaze.treasurehunt.Utils;
 
@@ -19,12 +18,13 @@ public class Model {
 
     private static final int COORDS_PER_VERTEX = 3;
 
-    public final float[] lightPosInEyeSpace = new float[4];
+    // Convenience vector for extracting the position from a matrix via multiplication.
+    private static final float[] POS_MATRIX_MULTIPLY_VEC = {0, 0, 0, 1.0f};
 
     public final String name;
     private int programId = 0;
 
-    public final float[] modelValue = new float[16];
+    public final float[] value;
 
     private FloatBuffer vertices;
     private FloatBuffer colors;
@@ -42,7 +42,12 @@ public class Model {
     public int drawArrayCount = 24; // 36 for cube
 
     public Model(String name) {
+        this(name, new float[16]);
+    }
+
+    public Model(String name, float value[]) {
         this.name = name;
+        this.value = value;
     }
 
     public void setVertices(float[] vertices) {
@@ -95,14 +100,14 @@ public class Model {
      * about position of the light, so if we rewrite our code to draw the model first,
      * the lighting might look strange.
      */
-    public void draw(float[] modelView, float[] modelViewProjection) {
+    public void draw(Model modelView, Model modelViewProjection, Position lightPosInEyeSpace) {
         GLES20.glUseProgram(programId);
 
         // Set ModelView, MVP, position, normals, and color.
-        GLES20.glUniform3fv(lightPosParam, 1, lightPosInEyeSpace, 0);
-        GLES20.glUniformMatrix4fv(modelParam, 1, false, modelValue, 0);
-        GLES20.glUniformMatrix4fv(modelViewParam, 1, false, modelView, 0);
-        GLES20.glUniformMatrix4fv(modelViewProjectionParam, 1, false, modelViewProjection, 0);
+        GLES20.glUniform3fv(lightPosParam, 1, lightPosInEyeSpace.value, 0);
+        GLES20.glUniformMatrix4fv(modelParam, 1, false, value, 0);
+        GLES20.glUniformMatrix4fv(modelViewParam, 1, false, modelView.value, 0);
+        GLES20.glUniformMatrix4fv(modelViewProjectionParam, 1, false, modelViewProjection.value, 0);
         GLES20.glVertexAttribPointer(
                 positionParam, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, vertices);
         GLES20.glVertexAttribPointer(normalParam, 3, GLES20.GL_FLOAT, false, 0, normals);
@@ -121,12 +126,46 @@ public class Model {
         Utils.checkGLError("drawing " + name);
     }
 
+    public void rotate(float angle, float x, float y, float z) {
+        rotate(0, angle, x, y, z);
+    }
+
     public void rotate(int offset, float angle, float x, float y, float z) {
-        Matrix.rotateM(modelValue, offset, angle, x, y ,z);
+        Matrix.rotateM(value, offset, angle, x, y ,z);
+    }
+
+    public void scale(float x, float y, float z) {
+        scale(0, x, y, z);
+    }
+
+    public void scale(int offset, float x, float y, float z) {
+        Matrix.scaleM(value, offset, x, y ,z);
+    }
+
+    public void translate(float x, float y, float z) {
+        translate(0, x, y, z);
     }
 
     public void translate(int offset, float x, float y, float z) {
-        Matrix.setIdentityM(modelValue, offset);
-        Matrix.translateM(modelValue, offset, x, y, z);
+        Matrix.setIdentityM(value, offset);
+        Matrix.translateM(value, offset, x, y, z);
+    }
+
+    public Model multiply(Model model) {
+        float result[] = new float[16];
+        Matrix.multiplyMM(result, 0, value, 0, model.value, 0);
+        return new Model(this.name + model.name, result);
+    }
+
+    public Position multiply(Position position) {
+        float result[] = new float[4];
+        Matrix.multiplyMV(result, 0, value, 0, position.value, 0);
+        return new Position(this.name + position.name, result);
+    }
+
+    public Position getPosition() {
+        Position position = new Position(name + "Position");
+        Matrix.multiplyMV(position.value, 0, value, 0, POS_MATRIX_MULTIPLY_VEC, 0);
+        return position;
     }
 }

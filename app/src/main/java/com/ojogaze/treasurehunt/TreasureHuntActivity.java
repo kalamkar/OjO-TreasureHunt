@@ -31,6 +31,7 @@ import com.google.vr.sdk.base.GvrView;
 import com.google.vr.sdk.base.HeadTransform;
 import com.google.vr.sdk.base.Viewport;
 import com.ojogaze.treasurehunt.oogles20.Model;
+import com.ojogaze.treasurehunt.oogles20.Position;
 import com.ojogaze.treasurehunt.oogles20.Shader;
 
 import java.util.List;
@@ -44,19 +45,16 @@ import care.dovetail.ojo.EyeController;
 /**
  * A Google VR sample application.
  * <p>
- * <p>The TreasureHunt scene consists of a planar ground grid and a floating
- * "treasure" cube. When the user looks at the cube, the cube will turn gold.
- * While gold, the user can activate the Cardboard trigger, either directly
- * using the touch trigger on their Cardboard viewer, or using the Daydream
- * controller-based trigger emulation. Activating the trigger will in turn
+ * <p>The TreasureHunt scene consists of a planar ground grid and a floating "treasure" cube.
+ * When the user looks at the cube, the cube will turn gold. While gold, the user can activate
+ * the Cardboard trigger, either directly using the touch trigger on their Cardboard viewer,
+ * or using the Daydream controller-based trigger emulation. Activating the trigger will in turn
  * randomly reposition the cube.
  */
 public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoRenderer,
         Gesture.Observer {
 
     private final EyeController eyeController = new EyeController(this);
-
-    protected float[] modelPosition;
 
     private static final String TAG = "TreasureHuntActivity";
 
@@ -69,13 +67,11 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private static final float YAW_LIMIT = 0.12f;
     private static final float PITCH_LIMIT = 0.12f;
 
-    private static final int COORDS_PER_VERTEX = 3;
+    private static final float FLOOR_DEPTH = 20f;
 
     // We keep the light always position just above the user.
-    private static final float[] LIGHT_POS_IN_WORLD_SPACE = new float[]{0.0f, 2.0f, 0.0f, 1.0f};
-
-    // Convenience vector for extracting the position from a matrix via multiplication.
-    private static final float[] POS_MATRIX_MULTIPLY_VEC = {0, 0, 0, 1.0f};
+    private static final Position LIGHT_POS_IN_WORLD_SPACE =
+            new Position("LIGHT_POS_IN_WORLD_SPACE", new float[]{0.0f, 2.0f, 0.0f, 1.0f});
 
     private static final float MIN_MODEL_DISTANCE = 3.0f;
     private static final float MAX_MODEL_DISTANCE = 7.0f;
@@ -83,20 +79,13 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 //    private static final String OBJECT_SOUND_FILE = "cube_sound.wav";
     private static final String SUCCESS_SOUND_FILE = "success.wav";
 
-    private final float[] lightPosInEyeSpace = new float[4];
-
     private final Model cube = new Model("Cube");
     private final Model floor = new Model("Floor");
 
-    private float[] camera;
-    private float[] view;
-    private float[] headView;
+    private Model camera = new Model("Camera");
+    private Model headView = new Model("HeadView");
 
-    private float[] tempPosition;
-    private float[] headRotation;
-
-    private float objectDistance = MAX_MODEL_DISTANCE / 2.0f;
-    private float floorDepth = 20f;
+    private float objectDistance = (MAX_MODEL_DISTANCE + MIN_MODEL_DISTANCE) / 2.0f;
 
     private Vibrator vibrator;
 
@@ -115,13 +104,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 
         initializeGvrView();
 
-        camera = new float[16];
-        view = new float[16];
-        tempPosition = new float[4];
-        // Model first appears directly in front of user.
-        modelPosition = new float[]{0.0f, 0.0f, -MAX_MODEL_DISTANCE / 2.0f};
-        headRotation = new float[4];
-        headView = new float[16];
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         // Initialize 3D audio engine.
@@ -207,7 +189,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         cube.attachShaders(new Shader[] {vertexShader, passthroughShader});
         floor.attachShaders(new Shader[] {vertexShader, gridShader});
 
-        floor.translate(0, 0, -floorDepth, 0); // Floor appears below user.
+        floor.translate(0, -FLOOR_DEPTH, 0); // Floor appears below user.
 
         // Avoid any delays during start-up due to decoding of sound files.
         new Thread(
@@ -229,7 +211,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
                 })
                 .start();
 
-        updateModelPosition();
+        // Model first appears directly in front of user.
+        updateModelPosition(new float[]{0.0f, 0.0f, -MAX_MODEL_DISTANCE / 2.0f});
 
         Utils.checkGLError("onSurfaceCreated");
     }
@@ -237,8 +220,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     /**
      * Updates the cube model position.
      */
-    protected void updateModelPosition() {
-        cube.translate(0, modelPosition[0], modelPosition[1], modelPosition[2]);
+    protected void updateModelPosition(float modelPosition[]) {
+        cube.translate(modelPosition[0], modelPosition[1], modelPosition[2]);
 
         // Update the sound location to match it with the new cube position.
         if (sourceId != GvrAudioEngine.INVALID_ID) {
@@ -255,17 +238,18 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
      */
     @Override
     public void onNewFrame(HeadTransform headTransform) {
-        cube.rotate(0, TIME_DELTA, 0.5f, 0.5f, 1.0f);
+        cube.rotate(TIME_DELTA, 0.5f, 0.5f, 1.0f);
 
         // Build the camera matrix and apply it to the ModelView.
-        Matrix.setLookAtM(camera, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        Matrix.setLookAtM(camera.value, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
-        headTransform.getHeadView(headView, 0);
+        headTransform.getHeadView(headView.value, 0);
 
         // Update the 3d audio engine with the most recent head rotation.
-        headTransform.getQuaternion(headRotation, 0);
-        gvrAudioEngine.setHeadRotation(
-                headRotation[0], headRotation[1], headRotation[2], headRotation[3]);
+        Position headRotation = new Position("HeadRotation");
+        headTransform.getQuaternion(headRotation.value, 0);
+        gvrAudioEngine.setHeadRotation(headRotation.value[0], headRotation.value[1],
+                headRotation.value[2], headRotation.value[3]);
         // Regular update call to GVR audio engine.
         gvrAudioEngine.update();
 
@@ -285,26 +269,24 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         Utils.checkGLError("colorParam");
 
         // Apply the eye transformation to the camera.
-        Matrix.multiplyMM(view, 0, eye.getEyeView(), 0, camera, 0);
+        Model view = new Model("EyeView", eye.getEyeView()).multiply(camera);
 
         // Set the position of the light
-        Matrix.multiplyMV(lightPosInEyeSpace, 0, view, 0, LIGHT_POS_IN_WORLD_SPACE, 0);
+        Position lightPosInEyeSpace = view.multiply(LIGHT_POS_IN_WORLD_SPACE);
 
         // Build the ModelView and ModelViewProjection matrices
         // for calculating cube position and light.
-        float[] perspective = eye.getPerspective(Z_NEAR, Z_FAR);
-        float modelView[] = new float[16];
-        float modelViewProjection[] = new float[16];
-        Matrix.multiplyMM(modelView, 0, view, 0, cube.modelValue, 0);
-        Matrix.multiplyMM(modelViewProjection, 0, perspective, 0, modelView, 0);
+        Model perspective = new Model("Perspective", eye.getPerspective(Z_NEAR, Z_FAR));
+        Model modelView = view.multiply(cube);
+        Model modelViewProjection = perspective.multiply(modelView);
         cube.setColors(isLookingAtObject()
                 ? WorldLayoutData.CUBE_FOUND_COLORS : WorldLayoutData.CUBE_COLORS);
-        cube.draw(modelView, modelViewProjection);
+        cube.draw(modelView, modelViewProjection, lightPosInEyeSpace);
 
         // Set modelView for the floor, so we draw floor in the correct location
-        Matrix.multiplyMM(modelView, 0, view, 0, floor.modelValue, 0);
-        Matrix.multiplyMM(modelViewProjection, 0, perspective, 0, modelView, 0);
-        floor.draw(modelView, modelViewProjection);
+        modelView = view.multiply(floor);
+        modelViewProjection = perspective.multiply(modelView);
+        floor.draw(modelView, modelViewProjection, lightPosInEyeSpace);
     }
 
     @Override
@@ -318,10 +300,10 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     public void onCardboardTrigger() {
         Log.i(TAG, "onCardboardTrigger");
 
-        if (isLookingAtObject()) {
+        if (isLookingAtObject() || (int) (Math.random() * 3) == 1) { // TODO(abhi): remove hack
             successSourceId = gvrAudioEngine.createStereoSound(SUCCESS_SOUND_FILE);
             gvrAudioEngine.playSound(successSourceId, false /* looping disabled */);
-            hideObject();
+            moveObject();
         }
 
         // Always give user feedback.
@@ -334,32 +316,25 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
      * <p>We'll rotate it around the Y-axis so it's out of sight, and then up or down by a little
      * bit.
      */
-    protected void hideObject() {
-        float[] rotationMatrix = new float[16];
-        float[] posVec = new float[4];
+    protected void moveObject() {
+        Model rotation = new Model("Rotation");
 
         // First rotate in XZ plane, between 90 and 270 deg away, and scale so that we vary
         // the object's distance from the user.
         float angleXZ = (float) Math.random() * 180 + 90;
-        Matrix.setRotateM(rotationMatrix, 0, angleXZ, 0f, 1f, 0f);
+        rotation.rotate(angleXZ, 0f, 1f, 0f);
         float oldObjectDistance = objectDistance;
-        objectDistance =
-                (float) Math.random() * (MAX_MODEL_DISTANCE - MIN_MODEL_DISTANCE) +
-                        MIN_MODEL_DISTANCE;
+        objectDistance = MIN_MODEL_DISTANCE +
+                (float) Math.random() * (MAX_MODEL_DISTANCE - MIN_MODEL_DISTANCE);
         float objectScalingFactor = objectDistance / oldObjectDistance;
-        Matrix.scaleM(rotationMatrix, 0, objectScalingFactor, objectScalingFactor,
-                objectScalingFactor);
-        Matrix.multiplyMV(posVec, 0, rotationMatrix, 0, cube.modelValue, 12);
+        rotation.scale(objectScalingFactor, objectScalingFactor, objectScalingFactor);
+        Position position = rotation.multiply(cube.getPosition());
 
         float angleY = (float) Math.random() * 80 - 40; // Angle in Y plane, between -40 and 40.
         angleY = (float) Math.toRadians(angleY);
         float newY = (float) Math.tan(angleY) * objectDistance;
 
-        modelPosition[0] = posVec[0];
-        modelPosition[1] = newY;
-        modelPosition[2] = posVec[2];
-
-        updateModelPosition();
+        updateModelPosition(new float[] { position.value[0], newY, position.value[2] });
     }
 
     /**
@@ -369,12 +344,9 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
      */
     private boolean isLookingAtObject() {
         // Convert object space to camera space. Use the headView from onNewFrame.
-        float modelView[] = new float[16];
-        Matrix.multiplyMM(modelView, 0, headView, 0, cube.modelValue, 0);
-        Matrix.multiplyMV(tempPosition, 0, modelView, 0, POS_MATRIX_MULTIPLY_VEC, 0);
-
-        float pitch = (float) Math.atan2(tempPosition[1], -tempPosition[2]);
-        float yaw = (float) Math.atan2(tempPosition[0], -tempPosition[2]);
+        Position gaze = headView.multiply(cube).getPosition();
+        float pitch = (float) Math.atan2(gaze.value[1], -gaze.value[2]);
+        float yaw = (float) Math.atan2(gaze.value[0], -gaze.value[2]);
 
         return Math.abs(pitch) < PITCH_LIMIT && Math.abs(yaw) < YAW_LIMIT;
     }
