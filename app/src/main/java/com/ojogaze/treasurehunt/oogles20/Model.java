@@ -157,6 +157,12 @@ public class Model {
         return new Model(this.name + model.name, result);
     }
 
+    public Position multiply(Model model, int offset) {
+        float result[] = new float[4];
+        Matrix.multiplyMV(result, 0, value, 0, model.value, offset);
+        return new Position(name + model.name, result);
+    }
+
     public Position multiply(Position position) {
         float result[] = new float[4];
         Matrix.multiplyMV(result, 0, value, 0, position.value, 0);

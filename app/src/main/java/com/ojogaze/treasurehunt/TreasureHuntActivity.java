@@ -328,7 +328,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
                 (float) Math.random() * (MAX_MODEL_DISTANCE - MIN_MODEL_DISTANCE);
         float objectScalingFactor = objectDistance / oldObjectDistance;
         rotation.scale(objectScalingFactor, objectScalingFactor, objectScalingFactor);
-        Position position = rotation.multiply(cube.getPosition());
+        Position position = rotation.multiply(cube, 12);
 
         float angleY = (float) Math.random() * 80 - 40; // Angle in Y plane, between -40 and 40.
         angleY = (float) Math.toRadians(angleY);
