@@ -300,7 +300,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     public void onCardboardTrigger() {
         Log.i(TAG, "onCardboardTrigger");
 
-        if (isLookingAtObject() || (int) (Math.random() * 3) == 1) { // TODO(abhi): remove hack
+        if (isLookingAtObject()) {
             successSourceId = gvrAudioEngine.createStereoSound(SUCCESS_SOUND_FILE);
             gvrAudioEngine.playSound(successSourceId, false /* looping disabled */);
             moveObject();
