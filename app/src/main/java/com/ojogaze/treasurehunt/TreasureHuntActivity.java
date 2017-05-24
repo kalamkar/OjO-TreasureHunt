@@ -79,7 +79,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 //    private static final String OBJECT_SOUND_FILE = "cube_sound.wav";
     private static final String SUCCESS_SOUND_FILE = "success.wav";
 
-    private final Model cube = new Model("Cube");
+    private final Model cube = new Model("Cube", 0, 36);
     private final Model floor = new Model("Floor");
 
     private Model camera = new Model("Camera");

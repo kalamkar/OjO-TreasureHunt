@@ -38,16 +38,27 @@ public class Model {
     private int modelViewProjectionParam;
     private int lightPosParam;
 
-    public int drawArrayStart = 0;
-    public int drawArrayCount = 24; // 36 for cube
+    private final int drawArrayStart;
+    private final int drawArrayCount; // 36 for cube
 
     public Model(String name) {
-        this(name, new float[16]);
+        this(name, new float[16], 0, 24);  // 36 for cube
+    }
+
+    public Model(String name, int drawArrayStart, int drawArrayCount) {
+        this(name, new float[16], drawArrayStart, drawArrayCount);
     }
 
     public Model(String name, float value[]) {
+        this(name, value, 0, 24);  // 36 for cube
+    }
+
+    public Model(String name, float value[], int drawArrayStart, int drawArrayCount) {
         this.name = name;
         this.value = value;
+
+        this.drawArrayStart = drawArrayStart;
+        this.drawArrayCount = drawArrayCount;
     }
 
     public void setVertices(float[] vertices) {
