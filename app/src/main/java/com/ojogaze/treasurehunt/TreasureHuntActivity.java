@@ -38,9 +38,9 @@ import java.util.List;
 
 import javax.microedition.khronos.egl.EGLConfig;
 
+import care.dovetail.ojo.EyeController;
 import care.dovetail.ojo.EyeEvent;
 import care.dovetail.ojo.Gesture;
-import care.dovetail.ojo.EyeController;
 
 /**
  * A Google VR sample application.
@@ -322,7 +322,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         // First rotate in XZ plane, between 90 and 270 deg away, and scale so that we vary
         // the object's distance from the user.
         float angleXZ = (float) Math.random() * 180 + 90;
-        rotation.rotate(angleXZ, 0f, 1f, 0f);
+        rotation.setRotate(angleXZ, 0f, 1f, 0f);
         float oldObjectDistance = objectDistance;
         objectDistance = MIN_MODEL_DISTANCE +
                 (float) Math.random() * (MAX_MODEL_DISTANCE - MIN_MODEL_DISTANCE);

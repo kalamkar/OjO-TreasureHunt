@@ -24,6 +24,9 @@ public class Model {
     public final String name;
     private int programId = 0;
 
+    private final int drawArrayStart;
+    private final int drawArrayCount; // 36 for cube
+
     public final float[] value;
 
     private FloatBuffer vertices;
@@ -37,9 +40,6 @@ public class Model {
     private int modelViewParam;
     private int modelViewProjectionParam;
     private int lightPosParam;
-
-    private final int drawArrayStart;
-    private final int drawArrayCount; // 36 for cube
 
     public Model(String name) {
         this(name, new float[16], 0, 24);  // 36 for cube
@@ -143,6 +143,14 @@ public class Model {
 
     public void rotate(int offset, float angle, float x, float y, float z) {
         Matrix.rotateM(value, offset, angle, x, y ,z);
+    }
+
+    public void setRotate(float angle, float x, float y, float z) {
+        setRotate(0, angle, x, y, z);
+    }
+
+    public void setRotate(int offset, float angle, float x, float y, float z) {
+        Matrix.setRotateM(value, offset, angle, x, y ,z);
     }
 
     public void scale(float x, float y, float z) {
