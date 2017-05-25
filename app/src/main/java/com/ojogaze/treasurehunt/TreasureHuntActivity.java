@@ -17,6 +17,7 @@
 package com.ojogaze.treasurehunt;
 
 import android.content.Context;
+import android.media.MediaPlayer;
 import android.opengl.GLES20;
 import android.opengl.Matrix;
 import android.os.Bundle;
@@ -34,7 +35,13 @@ import com.ojogaze.treasurehunt.oogles20.Model;
 import com.ojogaze.treasurehunt.oogles20.Position;
 import com.ojogaze.treasurehunt.oogles20.Shader;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.microedition.khronos.egl.EGLConfig;
 
@@ -73,8 +80,13 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private static final Position LIGHT_POS_IN_WORLD_SPACE =
             new Position("LIGHT_POS_IN_WORLD_SPACE", new float[]{0.0f, 2.0f, 0.0f, 1.0f});
 
-    private static final float MIN_MODEL_DISTANCE = 3.0f;
-    private static final float MAX_MODEL_DISTANCE = 7.0f;
+    private static final float MIN_Z = 8.0f;
+    private static final float MAX_Z = 12.0f;
+
+    private static final float MAX_X = 1.2f;
+
+    private static final int GESTURE_VISIBILITY_MILLIS = 1000;
+    private static final int FIXATION_VISIBILITY_MILLIS = 1000;
 
 //    private static final String OBJECT_SOUND_FILE = "cube_sound.wav";
     private static final String SUCCESS_SOUND_FILE = "success.wav";
@@ -85,14 +97,21 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private Model camera = new Model("Camera");
     private Model headView = new Model("HeadView");
 
-    private float objectDistance = (MAX_MODEL_DISTANCE + MIN_MODEL_DISTANCE) / 2.0f;
-
     private Vibrator vibrator;
 
     private GvrAudioEngine gvrAudioEngine;
     private volatile int sourceId = GvrAudioEngine.INVALID_ID;
     private volatile int successSourceId = GvrAudioEngine.INVALID_ID;
 
+    private EyeEvent.Source eyeEventSource;
+    private final Set<Gesture> directions = new HashSet<>();
+    private int blinkCount = 0;
+    private final Set<Integer> blinkAmplitudes = new HashSet<>();
+    private boolean animationRunning = false;
+    private long lastFruitChangeTimeMillis = 0;
+    private final Map<String, MediaPlayer> players = new HashMap<>();
+
+    private int currentColorIndex = 0;
 
     /**
      * Sets the view to our GvrView and initializes the transformation matrices we will use
@@ -137,6 +156,13 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        gvrAudioEngine.resume();
+        eyeController.connect();
+    }
+
+    @Override
     public void onPause() {
         gvrAudioEngine.pause();
         eyeController.disconnect();
@@ -144,10 +170,22 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     }
 
     @Override
-    public void onResume() {
-        super.onResume();
-        gvrAudioEngine.resume();
-        eyeController.connect();
+    public void onStart() {
+        super.onStart();
+        players.put("left", MediaPlayer.create(this, R.raw.slice));
+        players.put("right", MediaPlayer.create(this, R.raw.slice));
+        players.put("fixation", MediaPlayer.create(this, R.raw.jump));
+        players.put("blink", MediaPlayer.create(this, R.raw.ping));
+        players.put("explode", MediaPlayer.create(this, R.raw.explode));
+    }
+
+    @Override
+    public void onStop() {
+        for (MediaPlayer player : players.values()) {
+            player.release();
+        }
+        players.clear();
+        super.onStop();
     }
 
     @Override
@@ -174,7 +212,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         GLES20.glClearColor(0.1f, 0.1f, 0.1f, 0.5f); // Dark background so text shows up well.
 
         cube.setVertices(WorldLayoutData.CUBE_COORDS);
-        cube.setColors(WorldLayoutData.CUBE_COLORS);
+        cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
         cube.setNormals(WorldLayoutData.CUBE_NORMALS);
 
         // make a floor
@@ -212,7 +250,7 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
                 .start();
 
         // Model first appears directly in front of user.
-        updateModelPosition(new float[]{0.0f, 0.0f, -MAX_MODEL_DISTANCE / 2.0f});
+        updateModelPosition(new float[]{0.0f, 0.0f, -MIN_Z});
 
         Utils.checkGLError("onSurfaceCreated");
     }
@@ -238,7 +276,9 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
      */
     @Override
     public void onNewFrame(HeadTransform headTransform) {
-        cube.rotate(TIME_DELTA, 0.5f, 0.5f, 1.0f);
+        if (eyeController.processor.isGoodSignal()) {
+            cube.rotate(TIME_DELTA, 0.5f, 0.5f, 1.0f);
+        }
 
         // Build the camera matrix and apply it to the ModelView.
         Matrix.setLookAtM(camera.value, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
@@ -279,8 +319,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         Model perspective = new Model("Perspective", eye.getPerspective(Z_NEAR, Z_FAR));
         Model modelView = view.multiply(cube);
         Model modelViewProjection = perspective.multiply(modelView);
-        cube.setColors(isLookingAtObject()
-                ? WorldLayoutData.CUBE_FOUND_COLORS : WorldLayoutData.CUBE_COLORS);
         cube.draw(modelView, modelViewProjection, lightPosInEyeSpace);
 
         // Set modelView for the floor, so we draw floor in the correct location
@@ -303,38 +341,10 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         if (isLookingAtObject()) {
             successSourceId = gvrAudioEngine.createStereoSound(SUCCESS_SOUND_FILE);
             gvrAudioEngine.playSound(successSourceId, false /* looping disabled */);
-            moveObject();
         }
 
         // Always give user feedback.
         vibrator.vibrate(50);
-    }
-
-    /**
-     * Find a new random position for the object.
-     * <p>
-     * <p>We'll rotate it around the Y-axis so it's out of sight, and then up or down by a little
-     * bit.
-     */
-    protected void moveObject() {
-        Model rotation = new Model("Rotation");
-
-        // First rotate in XZ plane, between 90 and 270 deg away, and scale so that we vary
-        // the object's distance from the user.
-        float angleXZ = (float) Math.random() * 180 + 90;
-        rotation.setRotate(angleXZ, 0f, 1f, 0f);
-        float oldObjectDistance = objectDistance;
-        objectDistance = MIN_MODEL_DISTANCE +
-                (float) Math.random() * (MAX_MODEL_DISTANCE - MIN_MODEL_DISTANCE);
-        float objectScalingFactor = objectDistance / oldObjectDistance;
-        rotation.scale(objectScalingFactor, objectScalingFactor, objectScalingFactor);
-        Position position = rotation.multiply(cube, 12);
-
-        float angleY = (float) Math.random() * 80 - 40; // Angle in Y plane, between -40 and 40.
-        angleY = (float) Math.toRadians(angleY);
-        float newY = (float) Math.tan(angleY) * objectDistance;
-
-        updateModelPosition(new float[] { position.value[0], newY, position.value[2] });
     }
 
     /**
@@ -353,20 +363,145 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 
     @Override
     public void onGesture(final String gestureName, final List<EyeEvent> events) {
-        Log.v(TAG, gestureName);
+        if (isDestroyed() || isRestricted() || isFinishing() || animationRunning) {
+            return;
+        }
         switch (gestureName) {
+            case "left":
+                play(gestureName);
+                updateModelPosition(new float[] { -MAX_X, 0f, -MIN_Z});
+                scheduleResetPosition(GESTURE_VISIBILITY_MILLIS);
+                cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                animationRunning = true;
+                break;
+            case "right":
+                play(gestureName);
+                updateModelPosition(new float[] { MAX_X, 0f, -MIN_Z});
+                scheduleResetPosition(GESTURE_VISIBILITY_MILLIS);
+                cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                animationRunning = true;
+                break;
             case "blink":
-                onCardboardTrigger();
+                play(gestureName);
+                cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                maybeUpdateDirections(events);
+                break;
+            case "multiblink":
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastFruitChangeTimeMillis < 2000) {
+                    // Ignore quick multiblink events.
+                    return;
+                }
+                currentColorIndex = ++currentColorIndex < WorldLayoutData.CUBE_COLORS.length
+                        ? currentColorIndex : 0;
+                cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                lastFruitChangeTimeMillis = currentTime;
+                break;
+            case "fixation":
+                play(gestureName);
+                cube.setColors(WorldLayoutData.CUBE_COLOR_GOLD);
+                scheduleResetFixation(FIXATION_VISIBILITY_MILLIS);
+                break;
+            case "explode":
+                play(gestureName);
+                cube.setColors(WorldLayoutData.CUBE_COLOR_INVISIBLE);
+                scheduleResetFixation(FIXATION_VISIBILITY_MILLIS);
+                animationRunning = true;
                 break;
         }
     }
 
     @Override
     public void setEyeEventSource(EyeEvent.Source eyeEventSource) {
+        this.eyeEventSource = eyeEventSource;
         eyeEventSource.add(new Gesture("blink")
                 .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 2000))
                 .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.DOWN, 4000))
                 .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 2000))
                 .addObserver(this));
+        eyeEventSource.add(new Gesture("multiblink")
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 4000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.DOWN, 4000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 2000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.DOWN, 2000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.UP, 4000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.DOWN, 4000))
+                .addObserver(this));
+        eyeEventSource.add(new Gesture("fixation")
+                .add(EyeEvent.Criterion.fixation(1000))
+                .addObserver(this));
+        eyeEventSource.add(new Gesture("explode")
+                .add(EyeEvent.Criterion.fixation(4000, 4500))
+                .addObserver(this));
+        replaceDirections(1500);
+    }
+
+    private void replaceDirections(int amplitude) {
+        amplitude = Math.min(Math.max(amplitude, 800), 2000);
+        for (Gesture direction : directions) {
+            eyeEventSource.remove(direction);
+        }
+        directions.clear();
+        directions.add(new Gesture("left")
+                .add(EyeEvent.Criterion.fixation(1000, 4000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.LEFT, amplitude))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.RIGHT, amplitude))
+                .addObserver(this));
+        directions.add(new Gesture("right")
+                .add(EyeEvent.Criterion.fixation(1000, 4000))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.RIGHT, amplitude))
+                .add(EyeEvent.Criterion.saccade(EyeEvent.Direction.LEFT, amplitude))
+                .addObserver(this));
+        for (Gesture direction : directions) {
+            eyeEventSource.add(direction);
+        }
+    }
+
+    private void maybeUpdateDirections(List<EyeEvent> events) {
+        blinkCount++;
+        if (blinkCount % 10 == 0 || blinkAmplitudes.size() > 0) {
+            if (blinkAmplitudes.size() < 9) {
+                blinkAmplitudes.add(events.get(0).amplitude);
+                blinkAmplitudes.add(events.get(1).amplitude / 2);
+                blinkAmplitudes.add(events.get(2).amplitude);
+            } else {
+                int sum = 0;
+                for (Integer amplitude : blinkAmplitudes) {
+                    sum += amplitude;
+                }
+                replaceDirections((sum / blinkAmplitudes.size()) / 3);
+                blinkAmplitudes.clear();
+            }
+        }
+    }
+
+    private void scheduleResetPosition(int delay) {
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                updateModelPosition(new float[]{0.0f, 0.0f, -MIN_Z});
+                animationRunning = false;
+            }
+        }, delay);
+    }
+
+    private void scheduleResetFixation(int delay) {
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                animationRunning = false;
+            }
+        }, delay);
+    }
+
+    private void play(String name) {
+        MediaPlayer player = players.get(name);
+        if (player != null) {
+            if (player.isPlaying()) {
+                player.stop();
+            }
+            player.start();
+        }
     }
 }
