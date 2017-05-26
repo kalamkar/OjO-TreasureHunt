@@ -27,7 +27,7 @@ public final class WorldLayoutData {
             {0f, 0.5273f, 0.2656f, 1.0f},                   // Green
             {0.0f, 0.3398f, 0.9023f, 1.0f}                  // Blue
     };
-    private static final float INVISIBLE[] = new float[] {0f, 0f, 0f, 0.0f};
+    private static final float INVISIBLE[] = new float[] {0.1f, 0.1f, 0.1f, 0.5f};
 
     public static final float[] CUBE_COLOR_GOLD = new float[6 * 6 * 4];
     public static final float[][] CUBE_COLORS = new float[3][6 * 6 * 4];

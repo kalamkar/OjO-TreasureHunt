@@ -70,10 +70,10 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private static final Position LIGHT_POS_IN_WORLD_SPACE =
             new Position("LIGHT_POS_IN_WORLD_SPACE", new float[]{0.0f, 2.0f, 0.0f, 1.0f});
 
-    private static final float MIN_Z = 8.0f;
-    private static final float MAX_Z = 12.0f;
+    private static final float STABLE_Z = -8.0f;
 
-    private static final float MAX_X = 1.2f;
+    private static final float X_DISPLACEMENT = 3.0f;
+    private static final float Z_DISPLACEMENT = 1.0f;
 
     private static final int GESTURE_VISIBILITY_MILLIS = 1000;
     private static final int FIXATION_VISIBILITY_MILLIS = 1000;
@@ -84,6 +84,15 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private Model camera = new Model("Camera");
     private Model headView = new Model("HeadView");
 
+    // Model first appears directly in front of user.
+    private float cubeCurrentX = 0f;
+    private float cubeCurrentY = 0f;
+    private float cubeCurrentZ = STABLE_Z;
+
+    private int currentColorIndex = 0;
+
+    private Timer fixationResetTimer = null;
+
     private Vibrator vibrator;
 
     private EyeEvent.Source eyeEventSource;
@@ -93,8 +102,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private boolean animationRunning = false;
     private long lastFruitChangeTimeMillis = 0;
     private final Map<String, MediaPlayer> players = new HashMap<>();
-
-    private int currentColorIndex = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -189,17 +196,13 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 
         floor.translate(0, -FLOOR_DEPTH, 0); // Floor appears below user.
 
-        // Model first appears directly in front of user.
-        updateModelPosition(new float[]{0.0f, 0.0f, -MIN_Z});
-    }
-
-    protected void updateModelPosition(float modelPosition[]) {
-        cube.translate(modelPosition[0], modelPosition[1], modelPosition[2]);
+        cube.translate(cubeCurrentX, cubeCurrentY, cubeCurrentZ);
     }
 
     @Override
     public void onNewFrame(HeadTransform headTransform) {
-        if (eyeController.processor.isGoodSignal()) {
+        // Rotate the cube if good signal and not fixated.
+        if (eyeController.processor.isGoodSignal() && fixationResetTimer == null) {
             cube.rotate(TIME_DELTA, 0.5f, 0.5f, 1.0f);
         }
 
@@ -267,15 +270,15 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         switch (gestureName) {
             case "left":
                 play(gestureName);
-                updateModelPosition(new float[] { -MAX_X, 0f, -MIN_Z});
-                scheduleResetPosition(GESTURE_VISIBILITY_MILLIS);
+                cubeCurrentX -= X_DISPLACEMENT;
+                cube.translate(cubeCurrentX, cubeCurrentY, cubeCurrentZ);
                 cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
                 animationRunning = true;
                 break;
             case "right":
                 play(gestureName);
-                updateModelPosition(new float[] { MAX_X, 0f, -MIN_Z});
-                scheduleResetPosition(GESTURE_VISIBILITY_MILLIS);
+                cubeCurrentX += X_DISPLACEMENT;
+                cube.translate(cubeCurrentX, cubeCurrentY, cubeCurrentZ);
                 cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
                 animationRunning = true;
                 break;
@@ -298,6 +301,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
             case "fixation":
                 play(gestureName);
                 cube.setColors(WorldLayoutData.CUBE_COLOR_GOLD);
+                cubeCurrentZ -= Z_DISPLACEMENT;
+                cube.translate(cubeCurrentX, cubeCurrentY, cubeCurrentZ);
                 scheduleResetFixation(FIXATION_VISIBILITY_MILLIS);
                 break;
             case "explode":
@@ -373,22 +378,19 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         }
     }
 
-    private void scheduleResetPosition(int delay) {
-        new Timer().schedule(new TimerTask() {
-            @Override
-            public void run() {
-                updateModelPosition(new float[]{0.0f, 0.0f, -MIN_Z});
-                animationRunning = false;
-            }
-        }, delay);
-    }
-
     private void scheduleResetFixation(int delay) {
-        new Timer().schedule(new TimerTask() {
+        if (fixationResetTimer != null) {
+            fixationResetTimer.cancel();
+        }
+        fixationResetTimer = new Timer();
+        fixationResetTimer.schedule(new TimerTask() {
             @Override
             public void run() {
                 cube.setColors(WorldLayoutData.CUBE_COLORS[currentColorIndex]);
+                cubeCurrentZ = STABLE_Z;
+                cube.translate(cubeCurrentX, cubeCurrentY, cubeCurrentZ);
                 animationRunning = false;
+                fixationResetTimer = null;
             }
         }, delay);
     }
