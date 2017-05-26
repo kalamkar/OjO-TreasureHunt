@@ -24,7 +24,6 @@ import android.os.Bundle;
 import android.os.Vibrator;
 import android.util.Log;
 
-import com.google.vr.sdk.audio.GvrAudioEngine;
 import com.google.vr.sdk.base.AndroidCompat;
 import com.google.vr.sdk.base.Eye;
 import com.google.vr.sdk.base.GvrActivity;
@@ -49,15 +48,6 @@ import care.dovetail.ojo.EyeController;
 import care.dovetail.ojo.EyeEvent;
 import care.dovetail.ojo.Gesture;
 
-/**
- * A Google VR sample application.
- * <p>
- * <p>The TreasureHunt scene consists of a planar ground grid and a floating "treasure" cube.
- * When the user looks at the cube, the cube will turn gold. While gold, the user can activate
- * the Cardboard trigger, either directly using the touch trigger on their Cardboard viewer,
- * or using the Daydream controller-based trigger emulation. Activating the trigger will in turn
- * randomly reposition the cube.
- */
 public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoRenderer,
         Gesture.Observer {
 
@@ -88,9 +78,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private static final int GESTURE_VISIBILITY_MILLIS = 1000;
     private static final int FIXATION_VISIBILITY_MILLIS = 1000;
 
-//    private static final String OBJECT_SOUND_FILE = "cube_sound.wav";
-    private static final String SUCCESS_SOUND_FILE = "success.wav";
-
     private final Model cube = new Model("Cube", 0, 36);
     private final Model floor = new Model("Floor");
 
@@ -98,10 +85,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     private Model headView = new Model("HeadView");
 
     private Vibrator vibrator;
-
-    private GvrAudioEngine gvrAudioEngine;
-    private volatile int sourceId = GvrAudioEngine.INVALID_ID;
-    private volatile int successSourceId = GvrAudioEngine.INVALID_ID;
 
     private EyeEvent.Source eyeEventSource;
     private final Set<Gesture> directions = new HashSet<>();
@@ -113,21 +96,11 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 
     private int currentColorIndex = 0;
 
-    /**
-     * Sets the view to our GvrView and initializes the transformation matrices we will use
-     * to render our scene.
-     */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         initializeGvrView();
-
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-
-        // Initialize 3D audio engine.
-        gvrAudioEngine =
-                new GvrAudioEngine(this, GvrAudioEngine.RenderingMode.BINAURAL_HIGH_QUALITY);
         setEyeEventSource((EyeEvent.Source) eyeController.processor);
     }
 
@@ -138,11 +111,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         gvrView.setEGLConfigChooser(8, 8, 8, 8, 16, 8);
 
         gvrView.setRenderer(this);
-        gvrView.setTransitionViewEnabled(true);
+        gvrView.setTransitionViewEnabled(false);
 
-        // Enable Cardboard-trigger feedback with Daydream headsets.
-        // This is a simple way of supporting Daydream controller input for basic interactions
-        // using the existing Cardboard trigger API.
         gvrView.enableCardboardTriggerEmulation();
 
         if (gvrView.setAsyncReprojectionEnabled(true)) {
@@ -158,13 +128,11 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     @Override
     public void onResume() {
         super.onResume();
-        gvrAudioEngine.resume();
         eyeController.connect();
     }
 
     @Override
     public void onPause() {
-        gvrAudioEngine.pause();
         eyeController.disconnect();
         super.onPause();
     }
@@ -198,14 +166,6 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         Log.i(TAG, "onSurfaceChanged");
     }
 
-    /**
-     * Creates the buffers we use to store information about the 3D world.
-     * <p>
-     * <p>OpenGL doesn't use Java arrays, but rather needs data in a format it can understand.
-     * Hence we use ByteBuffers.
-     *
-     * @param config The EGL configuration used when creating the surface.
-     */
     @Override
     public void onSurfaceCreated(EGLConfig config) {
         Log.i(TAG, "onSurfaceCreated");
@@ -229,51 +189,14 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
 
         floor.translate(0, -FLOOR_DEPTH, 0); // Floor appears below user.
 
-        // Avoid any delays during start-up due to decoding of sound files.
-        new Thread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        // Start spatial audio playback of OBJECT_SOUND_FILE at the model position.
-                        // The returned sourceId handle is stored and allows for repositioning the
-                        // sound object whenever the cube position changes.
-//                        gvrAudioEngine.preloadSoundFile(OBJECT_SOUND_FILE);
-//                        sourceId = gvrAudioEngine.createSoundObject(OBJECT_SOUND_FILE);
-//                        gvrAudioEngine.setSoundObjectPosition(
-//                                sourceId, modelPosition[0], modelPosition[1], modelPosition[2]);
-//                        gvrAudioEngine.playSound(sourceId, true /* looped playback */);
-                        // Preload an unspatialized sound to be played on a successful trigger on
-                        // the cube.
-                        gvrAudioEngine.preloadSoundFile(SUCCESS_SOUND_FILE);
-                    }
-                })
-                .start();
-
         // Model first appears directly in front of user.
         updateModelPosition(new float[]{0.0f, 0.0f, -MIN_Z});
-
-        Utils.checkGLError("onSurfaceCreated");
     }
 
-    /**
-     * Updates the cube model position.
-     */
     protected void updateModelPosition(float modelPosition[]) {
         cube.translate(modelPosition[0], modelPosition[1], modelPosition[2]);
-
-        // Update the sound location to match it with the new cube position.
-        if (sourceId != GvrAudioEngine.INVALID_ID) {
-            gvrAudioEngine.setSoundObjectPosition(
-                    sourceId, modelPosition[0], modelPosition[1], modelPosition[2]);
-        }
-        Utils.checkGLError("updateCubePosition");
     }
 
-    /**
-     * Prepares OpenGL ES before we draw a frame.
-     *
-     * @param headTransform The head transformation in the new frame.
-     */
     @Override
     public void onNewFrame(HeadTransform headTransform) {
         if (eyeController.processor.isGoodSignal()) {
@@ -284,23 +207,8 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
         Matrix.setLookAtM(camera.value, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
         headTransform.getHeadView(headView.value, 0);
-
-        // Update the 3d audio engine with the most recent head rotation.
-        Position headRotation = new Position("HeadRotation");
-        headTransform.getQuaternion(headRotation.value, 0);
-        gvrAudioEngine.setHeadRotation(headRotation.value[0], headRotation.value[1],
-                headRotation.value[2], headRotation.value[3]);
-        // Regular update call to GVR audio engine.
-        gvrAudioEngine.update();
-
-        Utils.checkGLError("onReadyToDraw");
     }
 
-    /**
-     * Draws a frame for an eye.
-     *
-     * @param eye The eye to render. Includes all required transformations.
-     */
     @Override
     public void onDrawEye(Eye eye) {
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);
@@ -331,27 +239,17 @@ public class TreasureHuntActivity extends GvrActivity implements GvrView.StereoR
     public void onFinishFrame(Viewport viewport) {
     }
 
-    /**
-     * Called when the Cardboard trigger is pulled.
-     */
     @Override
     public void onCardboardTrigger() {
         Log.i(TAG, "onCardboardTrigger");
 
         if (isLookingAtObject()) {
-            successSourceId = gvrAudioEngine.createStereoSound(SUCCESS_SOUND_FILE);
-            gvrAudioEngine.playSound(successSourceId, false /* looping disabled */);
         }
 
         // Always give user feedback.
         vibrator.vibrate(50);
     }
 
-    /**
-     * Check if user is looking at object by calculating where the object is in eye-space.
-     *
-     * @return true if the user is looking at the object.
-     */
     private boolean isLookingAtObject() {
         // Convert object space to camera space. Use the headView from onNewFrame.
         Position gaze = headView.multiply(cube).getPosition();
