@@ -1,12 +1,12 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 25
-    buildToolsVersion "25.0.0"
+    compileSdkVersion 27
+    buildToolsVersion "27.0.3"
     defaultConfig {
         applicationId "com.ojogaze.treasurehunt"
         minSdkVersion 21
-        targetSdkVersion 25
+        targetSdkVersion 27
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
@@ -25,7 +25,7 @@ dependencies {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
     compile(name:'ojo-debug', ext:'aar')
-    compile 'com.android.support:appcompat-v7:25.3.1'
+    compile 'com.android.support:appcompat-v7:27.0.2'
     compile 'com.google.vr:sdk-base:1.40.0'
     testCompile 'junit:junit:4.12'
 }
@@ -34,4 +34,5 @@ repositories{
     flatDir{
         dirs 'libs'
     }
+    google()
 }
